@@ -46,6 +46,7 @@ use crate::{
     core_2d::Core2dPlugin,
     core_3d::Core3dPlugin,
     deferred::copy_lighting_id::CopyDeferredLightingIdPlugin,
+    depth_of_field::DepthOfFieldPlugin,
     fullscreen_vertex_shader::FULLSCREEN_SHADER_HANDLE,
     fxaa::FxaaPlugin,
     msaa_writeback::MsaaWritebackPlugin,
@@ -84,6 +85,7 @@ impl Plugin for CorePipelinePlugin {
                 TonemappingPlugin,
                 UpscalingPlugin,
                 BloomPlugin,
+                DepthOfFieldPlugin,
                 FxaaPlugin,
                 CASPlugin,
             ));
