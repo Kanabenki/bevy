@@ -340,13 +340,13 @@ impl Plugin for PbrPlugin {
                     prepare_lights
                         .in_set(RenderSet::ManageViews)
                         .after(prepare_assets::<Image>),
-                    sort_phase_system::<Shadow>.in_set(RenderSet::PhaseSort),
+                    sort_phase_system::<OpaqueShadow>.in_set(RenderSet::PhaseSort),
                     prepare_clusters.in_set(RenderSet::PrepareResources),
                 ),
             )
             .init_resource::<LightMeta>();
 
-        let shadow_pass_node = ShadowPassNode::new(&mut render_app.world);
+        let shadow_pass_node = OpaqueShadowPassNode::new(&mut render_app.world);
         let mut graph = render_app.world.resource_mut::<RenderGraph>();
         let draw_3d_graph = graph
             .get_sub_graph_mut(bevy_core_pipeline::core_3d::graph::NAME)

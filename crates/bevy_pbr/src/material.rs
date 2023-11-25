@@ -213,8 +213,10 @@ where
 
         if let Ok(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
-                .init_resource::<DrawFunctions<Shadow>>()
-                .add_render_command::<Shadow, DrawPrepass<M>>()
+                .init_resource::<DrawFunctions<OpaqueShadow>>()
+                .init_resource::<DrawFunctions<TransparentShadow>>()
+                .add_render_command::<OpaqueShadow, DrawPrepass<M>>()
+                .add_render_command::<TransparentShadow, DrawPrepass<M>>()
                 .add_render_command::<Transmissive3d, DrawMaterial<M>>()
                 .add_render_command::<Transparent3d, DrawMaterial<M>>()
                 .add_render_command::<Opaque3d, DrawMaterial<M>>()

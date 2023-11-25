@@ -16,6 +16,7 @@ use bevy_render::{
 };
 use bevy_transform::{components::GlobalTransform, prelude::Transform};
 use bevy_utils::{
+    default,
     nonmax::NonMaxU32,
     tracing::{error, warn},
     HashMap,
@@ -520,8 +521,14 @@ fn face_index_to_name(face_index: usize) -> &'static str {
 }
 
 #[derive(Component)]
-pub struct ShadowView {
+pub struct OpaqueShadowView {
     pub depth_texture_view: TextureView,
+    pub pass_name: String,
+}
+
+#[derive(Component)]
+pub struct TransparentShadowView {
+    pub transparent_texture_view: TextureView,
     pub pass_name: String,
 }
 
@@ -914,7 +921,24 @@ pub fn prepare_lights(
                 sample_count: 1,
                 dimension: TextureDimension::D2,
                 format: CORE_3D_DEPTH_FORMAT,
-                label: Some("point_light_shadow_map_texture"),
+                label: Some("point_light_opaque_shadow_map_texture"),
+                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            },
+        );
+        let point_light_transparent_texture = texture_cache.get(
+            &render_device,
+            TextureDescriptor {
+                size: Extent3d {
+                    width: point_light_shadow_map.size as u32,
+                    height: point_light_shadow_map.size as u32,
+                    depth_or_array_layers: point_light_shadow_maps_count.max(1) as u32 * 6,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rg11b10Float,
+                label: Some("point_light_transparent_shadow_map_texture"),
                 usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },
@@ -935,7 +959,28 @@ pub fn prepare_lights(
                 sample_count: 1,
                 dimension: TextureDimension::D2,
                 format: CORE_3D_DEPTH_FORMAT,
-                label: Some("directional_light_shadow_map_texture"),
+                label: Some("directional_light_opaque_shadow_map_texture"),
+                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            },
+        );
+        let directional_light_transparent_texture = texture_cache.get(
+            &render_device,
+            TextureDescriptor {
+                size: Extent3d {
+                    width: (directional_light_shadow_map.size as u32)
+                        .min(render_device.limits().max_texture_dimension_2d),
+                    height: (directional_light_shadow_map.size as u32)
+                        .min(render_device.limits().max_texture_dimension_2d),
+                    depth_or_array_layers: (num_directional_cascades_enabled
+                        + spot_light_shadow_maps_count)
+                        .max(1) as u32,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: TextureFormat::Rg11b10Float,
+                label: Some("directional_light_transparent_shadow_map_texture"),
                 usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             },
@@ -995,7 +1040,20 @@ pub fn prepare_lights(
                     point_light_depth_texture
                         .texture
                         .create_view(&TextureViewDescriptor {
-                            label: Some("point_light_shadow_map_texture_view"),
+                            label: Some("point_light_opaque_shadow_map_texture_view"),
+                            format: None,
+                            dimension: Some(TextureViewDimension::D2),
+                            aspect: TextureAspect::All,
+                            base_mip_level: 0,
+                            mip_level_count: None,
+                            base_array_layer: (light_index * 6 + face_index) as u32,
+                            array_layer_count: Some(1u32),
+                        });
+                let transparent_texture_view =
+                    point_light_transparent_texture
+                        .texture
+                        .create_view(&TextureViewDescriptor {
+                            label: Some("point_light_transparent_shadow_map_texture_view"),
                             format: None,
                             dimension: Some(TextureViewDimension::D2),
                             aspect: TextureAspect::All,
@@ -1007,10 +1065,18 @@ pub fn prepare_lights(
 
                 let view_light_entity = commands
                     .spawn((
-                        ShadowView {
+                        OpaqueShadowView {
                             depth_texture_view,
                             pass_name: format!(
-                                "shadow pass point light {} {}",
+                                "opaque shadow pass point light {} {}",
+                                light_index,
+                                face_index_to_name(face_index)
+                            ),
+                        },
+                        TransparentShadowView {
+                            transparent_texture_view,
+                            pass_name: format!(
+                                "transparent shadow pass point light {} {}",
                                 light_index,
                                 face_index_to_name(face_index)
                             ),
@@ -1028,7 +1094,8 @@ pub fn prepare_lights(
                             hdr: false,
                             color_grading: Default::default(),
                         },
-                        RenderPhase::<Shadow>::default(),
+                        RenderPhase::<OpaqueShadow>::default(),
+                        RenderPhase::<TransparentShadow>::default(),
                         LightEntity::Point {
                             light_entity,
                             face_index,
@@ -1067,11 +1134,28 @@ pub fn prepare_lights(
                         array_layer_count: Some(1u32),
                     });
 
+            let transparent_texture_view = directional_light_transparent_texture
+                .texture
+                .create_view(&TextureViewDescriptor {
+                    label: Some("spot_light_transparent_shadow_map_texture_view"),
+                    format: None,
+                    dimension: Some(TextureViewDimension::D2),
+                    aspect: TextureAspect::All,
+                    base_mip_level: 0,
+                    mip_level_count: None,
+                    base_array_layer: (num_directional_cascades_enabled + light_index) as u32,
+                    array_layer_count: Some(1u32),
+                });
+
             let view_light_entity = commands
                 .spawn((
-                    ShadowView {
+                    OpaqueShadowView {
                         depth_texture_view,
-                        pass_name: format!("shadow pass spot light {light_index}"),
+                        pass_name: format!("opaque shadow pass spot light {light_index}"),
+                    },
+                    TransparentShadowView {
+                        transparent_texture_view,
+                        pass_name: format!("transparent shadow pass spot light {light_index}"),
                     },
                     ExtractedView {
                         viewport: UVec4::new(
@@ -1086,7 +1170,8 @@ pub fn prepare_lights(
                         hdr: false,
                         color_grading: Default::default(),
                     },
-                    RenderPhase::<Shadow>::default(),
+                    RenderPhase::<OpaqueShadow>::default(),
+                    RenderPhase::<TransparentShadow>::default(),
                     LightEntity::Spot { light_entity },
                 ))
                 .id();
@@ -1095,7 +1180,7 @@ pub fn prepare_lights(
         }
 
         // directional lights
-        let mut directional_depth_texture_array_index = 0u32;
+        let mut directional_shadow_texture_array_index = 0u32;
         for (light_index, &(light_entity, light)) in directional_lights
             .iter()
             .enumerate()
@@ -1127,17 +1212,32 @@ pub fn prepare_lights(
                             aspect: TextureAspect::All,
                             base_mip_level: 0,
                             mip_level_count: None,
-                            base_array_layer: directional_depth_texture_array_index,
+                            base_array_layer: directional_shadow_texture_array_index,
                             array_layer_count: Some(1u32),
                         });
-                directional_depth_texture_array_index += 1;
+                let transparent_texture_view = directional_light_transparent_texture
+                    .texture
+                    .create_view(&TextureViewDescriptor {
+                        label: Some("directional_light_transparent_shadow_map_array_texture_view"),
+                        format: None,
+                        dimension: Some(TextureViewDimension::D2),
+                        aspect: TextureAspect::All,
+                        base_mip_level: 0,
+                        mip_level_count: None,
+                        base_array_layer: directional_shadow_texture_array_index,
+                        array_layer_count: Some(1u32),
+                    });
+                directional_shadow_texture_array_index += 1;
 
                 let view_light_entity = commands
                     .spawn((
-                        ShadowView {
+                        OpaqueShadowView {
                             depth_texture_view,
-                            pass_name: format!(
-                                "shadow pass directional light {light_index} cascade {cascade_index}"),
+                            pass_name: format!("opaque shadow pass directional light {light_index} cascade {cascade_index}"),
+                        },
+                        TransparentShadowView {
+                            transparent_texture_view,
+                            pass_name: format!("transparent shadow pass directional light {light_index} cascade {cascade_index}"),
                         },
                         ExtractedView {
                             viewport: UVec4::new(
@@ -1152,7 +1252,8 @@ pub fn prepare_lights(
                             hdr: false,
                             color_grading: Default::default(),
                         },
-                        RenderPhase::<Shadow>::default(),
+                        RenderPhase::<OpaqueShadow>::default(),
+                        RenderPhase::<TransparentShadow>::default(),
                         LightEntity::Directional {
                             light_entity,
                             cascade_index,
@@ -1551,7 +1652,8 @@ pub fn prepare_clusters(
 
 #[allow(clippy::too_many_arguments)]
 pub fn queue_shadows<M: Material>(
-    shadow_draw_functions: Res<DrawFunctions<Shadow>>,
+    opaque_shadow_draw_functions: Res<DrawFunctions<OpaqueShadow>>,
+    transparent_shadow_draw_functions: Res<DrawFunctions<OpaqueShadow>>,
     prepass_pipeline: Res<PrepassPipeline<M>>,
     render_meshes: Res<RenderAssets<Mesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
@@ -1560,7 +1662,11 @@ pub fn queue_shadows<M: Material>(
     mut pipelines: ResMut<SpecializedMeshPipelines<PrepassPipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
     view_lights: Query<(Entity, &ViewLightEntities)>,
-    mut view_light_shadow_phases: Query<(&LightEntity, &mut RenderPhase<Shadow>)>,
+    mut view_light_shadow_phases: Query<(
+        &LightEntity,
+        &mut RenderPhase<OpaqueShadow>,
+        &mut RenderPhase<TransparentShadow>,
+    )>,
     point_light_entities: Query<&CubemapVisibleEntities, With<ExtractedPointLight>>,
     directional_light_entities: Query<&CascadesVisibleEntities, With<ExtractedDirectionalLight>>,
     spot_light_entities: Query<&VisibleEntities, With<ExtractedPointLight>>,
@@ -1568,9 +1674,12 @@ pub fn queue_shadows<M: Material>(
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     for (entity, view_lights) in &view_lights {
-        let draw_shadow_mesh = shadow_draw_functions.read().id::<DrawPrepass<M>>();
+        let draw_opaque_shadow_mesh = opaque_shadow_draw_functions.read().id::<DrawPrepass<M>>();
+        let draw_transparent_shadow_mesh = transparent_shadow_draw_functions
+            .read()
+            .id::<DrawPrepass<M>>();
         for view_light_entity in view_lights.lights.iter().copied() {
-            let (light_entity, mut shadow_phase) =
+            let (light_entity, mut opaque_shadow_phase, mut transparent_shadow_phase) =
                 view_light_shadow_phases.get_mut(view_light_entity).unwrap();
             let is_directional_light = matches!(light_entity, LightEntity::Directional { .. });
             let visible_entities = match light_entity {
@@ -1649,20 +1758,32 @@ pub fn queue_shadows<M: Material>(
                     }
                 };
 
-                shadow_phase.add(Shadow {
-                    draw_function: draw_shadow_mesh,
-                    pipeline: pipeline_id,
-                    entity,
-                    distance: 0.0, // TODO: sort front-to-back
-                    batch_range: 0..1,
-                    dynamic_offset: None,
-                });
+                // TODO: Correct opaque/transparent condition.
+                if !material.properties.reads_view_transmission_texture {
+                    opaque_shadow_phase.add(OpaqueShadow {
+                        draw_function: draw_opaque_shadow_mesh,
+                        pipeline: pipeline_id,
+                        entity,
+                        distance: 0.0, // TODO: sort front-to-back
+                        batch_range: 0..1,
+                        dynamic_offset: None,
+                    });
+                } else {
+                    transparent_shadow_phase.add(TransparentShadow {
+                        draw_function: draw_transparent_shadow_mesh,
+                        pipeline: pipeline_id,
+                        entity,
+                        distance: 0.0, // TODO: sort front-to-back
+                        batch_range: 0..1,
+                        dynamic_offset: None,
+                    });
+                }
             }
         }
     }
 }
 
-pub struct Shadow {
+pub struct OpaqueShadow {
     pub distance: f32,
     pub entity: Entity,
     pub pipeline: CachedRenderPipelineId,
@@ -1671,7 +1792,7 @@ pub struct Shadow {
     pub dynamic_offset: Option<NonMaxU32>,
 }
 
-impl PhaseItem for Shadow {
+impl PhaseItem for OpaqueShadow {
     type SortKey = usize;
 
     #[inline]
@@ -1718,19 +1839,22 @@ impl PhaseItem for Shadow {
     }
 }
 
-impl CachedRenderPipelinePhaseItem for Shadow {
+impl CachedRenderPipelinePhaseItem for OpaqueShadow {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.pipeline
     }
 }
 
-pub struct ShadowPassNode {
+pub struct OpaqueShadowPassNode {
     main_view_query: QueryState<&'static ViewLightEntities>,
-    view_light_query: QueryState<(&'static ShadowView, &'static RenderPhase<Shadow>)>,
+    view_light_query: QueryState<(
+        &'static OpaqueShadowView,
+        &'static RenderPhase<OpaqueShadow>,
+    )>,
 }
 
-impl ShadowPassNode {
+impl OpaqueShadowPassNode {
     pub fn new(world: &mut World) -> Self {
         Self {
             main_view_query: QueryState::new(world),
@@ -1739,7 +1863,7 @@ impl ShadowPassNode {
     }
 }
 
-impl Node for ShadowPassNode {
+impl Node for OpaqueShadowPassNode {
     fn update(&mut self, world: &mut World) {
         self.main_view_query.update_archetypes(world);
         self.view_light_query.update_archetypes(world);
@@ -1780,6 +1904,140 @@ impl Node for ShadowPassNode {
                     });
 
                 shadow_phase.render(&mut render_pass, world, view_light_entity);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub struct TransparentShadow {
+    pub distance: f32,
+    pub entity: Entity,
+    pub pipeline: CachedRenderPipelineId,
+    pub draw_function: DrawFunctionId,
+    pub batch_range: Range<u32>,
+    pub dynamic_offset: Option<NonMaxU32>,
+}
+
+impl PhaseItem for TransparentShadow {
+    type SortKey = usize;
+
+    #[inline]
+    fn entity(&self) -> Entity {
+        self.entity
+    }
+
+    #[inline]
+    fn sort_key(&self) -> Self::SortKey {
+        self.pipeline.id()
+    }
+
+    #[inline]
+    fn draw_function(&self) -> DrawFunctionId {
+        self.draw_function
+    }
+
+    #[inline]
+    fn sort(items: &mut [Self]) {
+        // The shadow phase is sorted by pipeline id for performance reasons.
+        // Grouping all draw commands using the same pipeline together performs
+        // better than rebinding everything at a high rate.
+        radsort::sort_by_key(items, |item| item.sort_key());
+    }
+
+    #[inline]
+    fn batch_range(&self) -> &Range<u32> {
+        &self.batch_range
+    }
+
+    #[inline]
+    fn batch_range_mut(&mut self) -> &mut Range<u32> {
+        &mut self.batch_range
+    }
+
+    #[inline]
+    fn dynamic_offset(&self) -> Option<NonMaxU32> {
+        self.dynamic_offset
+    }
+
+    #[inline]
+    fn dynamic_offset_mut(&mut self) -> &mut Option<NonMaxU32> {
+        &mut self.dynamic_offset
+    }
+}
+
+impl CachedRenderPipelinePhaseItem for TransparentShadow {
+    #[inline]
+    fn cached_pipeline(&self) -> CachedRenderPipelineId {
+        self.pipeline
+    }
+}
+
+pub struct TransparentShadowPassNode {
+    main_view_query: QueryState<&'static ViewLightEntities>,
+    view_light_query: QueryState<(
+        &'static TransparentShadowView,
+        &'static RenderPhase<TransparentShadow>,
+    )>,
+}
+
+impl TransparentShadowPassNode {
+    pub fn new(world: &mut World) -> Self {
+        Self {
+            main_view_query: QueryState::new(world),
+            view_light_query: QueryState::new(world),
+        }
+    }
+}
+
+impl Node for TransparentShadowPassNode {
+    fn update(&mut self, world: &mut World) {
+        self.main_view_query.update_archetypes(world);
+        self.view_light_query.update_archetypes(world);
+    }
+
+    fn run(
+        &self,
+        graph: &mut RenderGraphContext,
+        render_context: &mut RenderContext,
+        world: &World,
+    ) -> Result<(), NodeRunError> {
+        let view_entity = graph.view_entity();
+        if let Ok(view_lights) = self.main_view_query.get_manual(world, view_entity) {
+            for view_light_entity in view_lights.lights.iter().copied() {
+                let (view_light, transparent_shadow_phase) = self
+                    .view_light_query
+                    .get_manual(world, view_light_entity)
+                    .unwrap();
+
+                if transparent_shadow_phase.items.is_empty() {
+                    continue;
+                }
+
+                let mut render_pass =
+                    render_context.begin_tracked_render_pass(RenderPassDescriptor {
+                        label: Some(&view_light.pass_name),
+                        color_attachments: &[Some(RenderPassColorAttachment {
+                            view: &view_light.transparent_texture_view,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: LoadOp::Clear(Color::rgba(1.0, 1.0, 1.0, 0.0).into()),
+                                store: StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                            view: &view_light.transparent_texture_view,
+                            depth_ops: Some(Operations {
+                                load: LoadOp::Load,
+                                store: StoreOp::Discard,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        ..default()
+                    });
+
+                transparent_shadow_phase.render(&mut render_pass, world, view_light_entity);
             }
         }
 
