@@ -1,8 +1,16 @@
+//! Provide asset functionality to the Bevy Engine.
+//!
+//! Defines the core [`Asset`] trait for asset management and providing functionality
+//! for storing, loading and processing assets.
+
+#![warn(missing_docs)]
+
 pub mod io;
 pub mod meta;
 pub mod processor;
 pub mod saver;
 
+#[allow(missing_docs)]
 pub mod prelude {
     #[doc(hidden)]
     pub use crate::{
@@ -82,6 +90,10 @@ pub struct AssetPlugin {
     pub mode: AssetMode,
 }
 
+/// Indicates whether to "pre-process" assets or not when loading them from their [`AssetSource`].
+///
+/// [`AssetSource`]: crate::io::AssetSource
+
 #[derive(Debug)]
 pub enum AssetMode {
     /// Loads assets from their [`AssetSource`]'s default [`AssetReader`] without any "preprocessing".
@@ -98,7 +110,7 @@ pub enum AssetMode {
     ///
     /// When developing an app, you should enable the `asset_processor` cargo feature, which will run the asset processor at startup. This should generally
     /// be used in combination with the `file_watcher` cargo feature, which enables hot-reloading of assets that have changed. When both features are enabled,
-    /// changes to "original/source assets" will be detected, the asset will be re-processed, and then the final processed asset will be hot-reloaded in the app.  
+    /// changes to "original/source assets" will be detected, the asset will be re-processed, and then the final processed asset will be hot-reloaded in the app.
     ///
     /// [`AssetMeta`]: crate::meta::AssetMeta
     /// [`AssetSource`]: crate::io::AssetSource
@@ -200,9 +212,20 @@ impl Plugin for AssetPlugin {
     }
 }
 
+/// Represents a runtime value of some data used in an [`App`], such as images, meshes, scenes...
+/// [`Asset`] can be implemented for any custom type by deriving [`Asset`] and [`TypePath`].
+///
+/// An [`Asset`] is usually accessed through an [`Assets`] storage indexed by an [`Handle`].
+///
+/// See also [`Asset`](bevy_asset_macros::Asset).
 pub trait Asset: VisitAssetDependencies + TypePath + Send + Sync + 'static {}
 
+/// Defines how to visit the asset dependencies of an asset or asset handle.
 pub trait VisitAssetDependencies {
+    /// Visit every asset dependency of the implementor.
+    ///
+    /// When implementing this function,`visit` should be called with the [`UntypedAssetId`] of
+    /// every asset the implementor depends on.
     fn visit_dependencies(&self, visit: &mut impl FnMut(UntypedAssetId));
 }
 

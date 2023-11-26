@@ -99,7 +99,7 @@ pub enum AssetWriterError {
     Io(#[from] std::io::Error),
 }
 
-/// Preforms write operations on an asset storage. [`AssetWriter`] exposes a "virtual filesystem"
+/// Performs write operations on an asset storage. [`AssetWriter`] exposes a "virtual filesystem"
 /// API, where asset bytes and asset metadata bytes are both stored and accessible for a given
 /// `path`.
 ///
@@ -178,7 +178,7 @@ pub trait AssetWriter: Send + Sync + 'static {
     }
 }
 
-/// An "asset source change event" that occurs whenever asset (or asset metadata) is created/added/removed
+/// An "asset source change event" that occurs whenever asset (or asset metadata) is created/added/removed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetSourceEvent {
     /// An asset at this path was added.
@@ -188,7 +188,12 @@ pub enum AssetSourceEvent {
     /// An asset at this path was removed.
     RemovedAsset(PathBuf),
     /// An asset at this path was renamed.
-    RenamedAsset { old: PathBuf, new: PathBuf },
+    RenamedAsset {
+        /// The old asset path.
+        old: PathBuf,
+        /// The new asset path.
+        new: PathBuf,
+    },
     /// Asset metadata at this path was added.
     AddedMeta(PathBuf),
     /// Asset metadata at this path was modified.
@@ -196,13 +201,23 @@ pub enum AssetSourceEvent {
     /// Asset metadata at this path was removed.
     RemovedMeta(PathBuf),
     /// Asset metadata at this path was renamed.
-    RenamedMeta { old: PathBuf, new: PathBuf },
+    RenamedMeta {
+        /// The old asset metadata path.
+        old: PathBuf,
+        /// The new asset metadata path.
+        new: PathBuf,
+    },
     /// A folder at the given path was added.
     AddedFolder(PathBuf),
     /// A folder at the given path was removed.
     RemovedFolder(PathBuf),
     /// A folder at the given path was renamed.
-    RenamedFolder { old: PathBuf, new: PathBuf },
+    RenamedFolder {
+        /// The old folder path.
+        old: PathBuf,
+        /// The new folder path.
+        new: PathBuf,
+    },
     /// Something of unknown type was removed. It is the job of the event handler to determine the type.
     /// This exists because notify-rs produces "untyped" rename events without destination paths for unwatched folders, so we can't determine the type of
     /// the rename.
