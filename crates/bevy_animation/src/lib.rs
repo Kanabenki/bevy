@@ -69,6 +69,8 @@ impl Keyframes {
 pub struct VariableCurve {
     /// Timestamp for each of the keyframes.
     pub keyframe_timestamps: Vec<f32>,
+    /// Timestamp for every 32nd keyframe. Used to accelerate the keyframe lookups.
+    pub keyframe_buckets: Vec<f32>,
     /// List of the keyframes.
     ///
     /// The representation will depend on the interpolation type of this curve:
@@ -82,6 +84,20 @@ pub struct VariableCurve {
 }
 
 impl VariableCurve {
+    pub fn new(
+        keyframe_timestamps: Vec<f32>,
+        keyframes: Keyframes,
+        interpolation: Interpolation,
+    ) -> Self {
+        let keyframe_buckets = keyframe_timestamps.iter().copied().step_by(32).collect();
+        Self {
+            keyframe_timestamps,
+            keyframe_buckets,
+            keyframes,
+            interpolation,
+        }
+    }
+
     /// Find the index of the keyframe at or before the current time.
     ///
     /// Returns [`None`] if the curve is finished or not yet started.
@@ -92,8 +108,21 @@ impl VariableCurve {
         // An Err result means the keyframe was not found, and the index is the keyframe
         // PERF: finding the current keyframe can be optimised
         let search_result = self
-            .keyframe_timestamps
-            .binary_search_by(|probe| probe.partial_cmp(&seek_time).unwrap());
+            .keyframe_buckets
+            .binary_search_by(|probe| probe.total_cmp(&seek_time));
+
+        let (search_start, search_end) = match search_result {
+            Ok(i) => (i * 32, (i + 1) * 32),
+            Err(0) => return None,
+            Err(i) => ((i - 1) * 32, i * 32),
+        };
+
+        let mut search_result = self.keyframe_timestamps
+            [search_start..usize::min(search_end, self.keyframe_timestamps.len())]
+            .binary_search_by(|probe| probe.total_cmp(&seek_time));
+        match &mut search_result {
+            Ok(i) | Err(i) => *i += search_start,
+        };
 
         // Subtract one for zero indexing!
         let last_keyframe = self.keyframes.len() - 1;
@@ -973,11 +1002,11 @@ mod tests {
         ];
         let interpolation = crate::Interpolation::Linear;
 
-        let variable_curve = VariableCurve {
+        let variable_curve = VariableCurve::new(
             keyframe_timestamps,
-            keyframes: crate::Keyframes::Translation(keyframes),
+            crate::Keyframes::Translation(keyframes),
             interpolation,
-        };
+        );
 
         assert!(variable_curve.keyframe_timestamps.len() == variable_curve.keyframes.len());
 

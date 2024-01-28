@@ -263,11 +263,11 @@ async fn load_gltf<'a, 'b, 'c>(
                         bevy_animation::EntityPath {
                             parts: path.clone(),
                         },
-                        bevy_animation::VariableCurve {
+                        bevy_animation::VariableCurve::new(
                             keyframe_timestamps,
                             keyframes,
                             interpolation,
-                        },
+                        ),
                     );
                 } else {
                     warn!(
