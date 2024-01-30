@@ -74,7 +74,7 @@ serde = { version = "1", features = ["derive"] }
 bitflags = "2.3"
 bytemuck = { version = "1.5", features = ["derive"] }
 downcast-rs = "1.2.0"
-thread_local = "1.1"
+thread_local = "1.1.7"
 thiserror = "1.0"
 futures-lite = "2.0.1"
 hexasphere = "10.0"
