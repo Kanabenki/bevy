@@ -23,6 +23,13 @@
 #import bevy_pbr::forward_io::VertexOutput
 #endif
 
+fn triplanarSample() {
+    if (pbr_bindings::material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_UV_0_TRIPLANAR_WORLD_BIT != 0u) {
+    } else {
+
+    }
+}
+
 // prepare a basic PbrInput from the vertex stage output, mesh binding and view binding
 fn pbr_input_from_vertex_output(
     in: VertexOutput,
@@ -73,8 +80,11 @@ fn pbr_input_from_standard_material(
     let NdotV = max(dot(pbr_input.N, pbr_input.V), 0.0001);
 
 #ifdef VERTEX_UVS
-    var uv = in.uv;
+    uv = (pbr_bindings::material.uv_0_transform * vec3<f32>(in.uv, 0.0)).xy;
+#endif VERTEX_UVS
+}
 
+#ifdef VERTEX_UVS
 #ifdef VERTEX_TANGENTS
     if ((pbr_bindings::material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_DEPTH_MAP_BIT) != 0u) {
         let V = pbr_input.V;

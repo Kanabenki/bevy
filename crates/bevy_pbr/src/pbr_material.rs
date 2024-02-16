@@ -1,5 +1,5 @@
 use bevy_asset::{Asset, Handle};
-use bevy_math::Vec4;
+use bevy_math::{Affine2, Affine3, Affine3A, Mat3, Vec4};
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::{
     color::Color, mesh::MeshVertexBufferLayout, render_asset::RenderAssets, render_resource::*,
@@ -465,6 +465,9 @@ pub struct StandardMaterial {
     /// The exposure (brightness) level of the lightmap, if present.
     pub lightmap_exposure: f32,
 
+    /// The UV set 0 mapping mode and transform.
+    pub uv_0_mode: UvMode,
+
     /// Render method used for opaque materials. (Where `alpha_mode` is [`AlphaMode::Opaque`] or [`AlphaMode::Mask`])
     pub opaque_render_method: OpaqueRendererMethod,
 
@@ -517,6 +520,9 @@ impl Default for StandardMaterial {
             parallax_depth_scale: 0.1,
             max_parallax_layer_count: 16.0,
             lightmap_exposure: 1.0,
+            uv_0_mode: UvMode::Vertex {
+                transform: Affine2::IDENTITY,
+            },
             parallax_mapping_method: ParallaxMappingMethod::Occlusion,
             opaque_render_method: OpaqueRendererMethod::Auto,
             deferred_lighting_pass_id: DEFAULT_PBR_DEFERRED_LIGHTING_PASS_ID,
@@ -547,35 +553,59 @@ impl From<Handle<Image>> for StandardMaterial {
     }
 }
 
+/// Determines the uv mapping mode and the transform to apply to the uv coordinates.
+#[derive(Reflect, Debug, Clone, Copy)]
+pub enum UvMode {
+    /// Use the uv coordinates provided by the mesh attributes.
+    Vertex {
+        /// Transform to apply to the uv coordinates.
+        transform: Affine2,
+    },
+    /// Use the local mesh vertex coordinates as the uvw coordinates.
+    TriplanarLocal {
+        /// Transform to apply to the uvw coordinates.
+        transform: Affine3A,
+    },
+    /// Use the world mesh vertex coordinates as the uvw coordinates.
+    TriplanarWorld {
+        /// Transform to apply to the uvw coordinates.
+        transform: Affine3A,
+    },
+}
+
 // NOTE: These must match the bit flags in bevy_pbr/src/render/pbr_types.wgsl!
 bitflags::bitflags! {
     /// Bitflags info about the material a shader is currently rendering.
     /// This is accessible in the shader in the [`StandardMaterialUniform`]
     #[repr(transparent)]
     pub struct StandardMaterialFlags: u32 {
-        const BASE_COLOR_TEXTURE         = 1 << 0;
-        const EMISSIVE_TEXTURE           = 1 << 1;
-        const METALLIC_ROUGHNESS_TEXTURE = 1 << 2;
-        const OCCLUSION_TEXTURE          = 1 << 3;
-        const DOUBLE_SIDED               = 1 << 4;
-        const UNLIT                      = 1 << 5;
-        const TWO_COMPONENT_NORMAL_MAP   = 1 << 6;
-        const FLIP_NORMAL_MAP_Y          = 1 << 7;
-        const FOG_ENABLED                = 1 << 8;
-        const DEPTH_MAP                  = 1 << 9; // Used for parallax mapping
-        const SPECULAR_TRANSMISSION_TEXTURE = 1 << 10;
-        const THICKNESS_TEXTURE          = 1 << 11;
-        const DIFFUSE_TRANSMISSION_TEXTURE = 1 << 12;
-        const ATTENUATION_ENABLED        = 1 << 13;
-        const ALPHA_MODE_RESERVED_BITS   = Self::ALPHA_MODE_MASK_BITS << Self::ALPHA_MODE_SHIFT_BITS; // ← Bitmask reserving bits for the `AlphaMode`
-        const ALPHA_MODE_OPAQUE          = 0 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← Values are just sequential values bitshifted into
-        const ALPHA_MODE_MASK            = 1 << Self::ALPHA_MODE_SHIFT_BITS;                          //   the bitmask, and can range from 0 to 7.
-        const ALPHA_MODE_BLEND           = 2 << Self::ALPHA_MODE_SHIFT_BITS;                          //
-        const ALPHA_MODE_PREMULTIPLIED   = 3 << Self::ALPHA_MODE_SHIFT_BITS;                          //
-        const ALPHA_MODE_ADD             = 4 << Self::ALPHA_MODE_SHIFT_BITS;                          //   Right now only values 0–5 are used, which still gives
-        const ALPHA_MODE_MULTIPLY        = 5 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← us "room" for two more modes without adding more bits
-        const NONE                       = 0;
-        const UNINITIALIZED              = 0xFFFF;
+        const BASE_COLOR_TEXTURE             = 1 << 0;
+        const EMISSIVE_TEXTURE               = 1 << 1;
+        const METALLIC_ROUGHNESS_TEXTURE     = 1 << 2;
+        const OCCLUSION_TEXTURE              = 1 << 3;
+        const DOUBLE_SIDED                   = 1 << 4;
+        const UNLIT                          = 1 << 5;
+        const TWO_COMPONENT_NORMAL_MAP       = 1 << 6;
+        const FLIP_NORMAL_MAP_Y              = 1 << 7;
+        const FOG_ENABLED                    = 1 << 8;
+        const DEPTH_MAP                      = 1 << 9; // Used for parallax mapping
+        const SPECULAR_TRANSMISSION_TEXTURE  = 1 << 10;
+        const THICKNESS_TEXTURE              = 1 << 11;
+        const DIFFUSE_TRANSMISSION_TEXTURE   = 1 << 12;
+        const ATTENUATION_ENABLED            = 1 << 13;
+        const UV_0_TRIPLANAR_ENABLED         = 1 << 14;
+        const UV_0_TRIPLANAR_WORLD           = 1 << 15;
+        const UV_1_TRIPLANAR_ENABLED         = 1 << 16;
+        const UV_1_TRIPLANAR_WORLD           = 1 << 17;
+        const ALPHA_MODE_RESERVED_BITS       = Self::ALPHA_MODE_MASK_BITS << Self::ALPHA_MODE_SHIFT_BITS; // ← Bitmask reserving bits for the `AlphaMode`
+        const ALPHA_MODE_OPAQUE              = 0 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← Values are just sequential values bitshifted into
+        const ALPHA_MODE_MASK                = 1 << Self::ALPHA_MODE_SHIFT_BITS;                          //   the bitmask, and can range from 0 to 7.
+        const ALPHA_MODE_BLEND               = 2 << Self::ALPHA_MODE_SHIFT_BITS;                          //
+        const ALPHA_MODE_PREMULTIPLIED       = 3 << Self::ALPHA_MODE_SHIFT_BITS;                          //
+        const ALPHA_MODE_ADD                 = 4 << Self::ALPHA_MODE_SHIFT_BITS;                          //   Right now only values 0–5 are used, which still gives
+        const ALPHA_MODE_MULTIPLY            = 5 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← us "room" for two more modes without adding more bits
+        const NONE                           = 0;
+        const UNINITIALIZED                  = 0xFFFF;
     }
 }
 
@@ -627,6 +657,8 @@ pub struct StandardMaterialUniform {
     pub max_parallax_layer_count: f32,
     /// The exposure (brightness) level of the lightmap, if present.
     pub lightmap_exposure: f32,
+    /// The transform applied to uv coordinates.
+    pub uv_0_transform: [Vec4; 3],
     /// Using [`ParallaxMappingMethod::Relief`], how many additional
     /// steps to use at most to find the depth value.
     pub max_relief_mapping_search_steps: u32,
@@ -710,6 +742,32 @@ impl AsBindGroupShaderType<StandardMaterialUniform> for StandardMaterial {
             flags |= StandardMaterialFlags::ATTENUATION_ENABLED;
         }
 
+        let to_transpose = |transform: Affine3A| {
+            let transpose_3x3 = transform.matrix3.transpose();
+            [
+                transpose_3x3.x_axis.extend(transform.translation.x),
+                transpose_3x3.y_axis.extend(transform.translation.y),
+                transpose_3x3.z_axis.extend(transform.translation.z),
+            ]
+        };
+
+        let uv_0_transform = match self.uv_0_mode {
+            UvMode::Vertex { transform } => Affine3 {
+                matrix3: Mat3::from_mat2(transform.matrix2),
+                translation: transform.translation.extend(0.0),
+            }
+            .to_transpose(),
+            UvMode::TriplanarLocal { transform } => {
+                flags |= StandardMaterialFlags::UV_0_TRIPLANAR_ENABLED;
+                to_transpose(transform)
+            }
+            UvMode::TriplanarWorld { transform } => {
+                flags |= StandardMaterialFlags::UV_0_TRIPLANAR_ENABLED
+                    | StandardMaterialFlags::UV_0_TRIPLANAR_WORLD;
+                to_transpose(transform)
+            }
+        };
+
         StandardMaterialUniform {
             base_color: self.base_color.as_linear_rgba_f32().into(),
             emissive: self.emissive.as_linear_rgba_f32().into(),
@@ -727,6 +785,7 @@ impl AsBindGroupShaderType<StandardMaterialUniform> for StandardMaterial {
             parallax_depth_scale: self.parallax_depth_scale,
             max_parallax_layer_count: self.max_parallax_layer_count,
             lightmap_exposure: self.lightmap_exposure,
+            uv_0_transform,
             max_relief_mapping_search_steps: self.parallax_mapping_method.max_steps(),
             deferred_lighting_pass_id: self.deferred_lighting_pass_id as u32,
         }
