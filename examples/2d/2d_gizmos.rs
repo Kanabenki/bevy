@@ -37,6 +37,16 @@ fn draw_example_collection(
     mut my_gizmos: Gizmos<MyRoundGizmos>,
     time: Res<Time>,
 ) {
+    gizmos
+        .grid_2d(
+            Vec2::splat(400.),
+            UVec2::splat((time.elapsed_seconds() as u32 % 8) + 2),
+            Vec2::ZERO,
+            -time.elapsed_seconds() / 4.0,
+            Color::DARK_GRAY,
+        )
+        .with_border(false);
+
     let sin = time.elapsed_seconds().sin() * 50.;
     gizmos.line_2d(Vec2::Y * -sin, Vec2::splat(-80.), Color::RED);
     gizmos.ray_2d(Vec2::Y * sin, Vec2::splat(80.), Color::GREEN);
